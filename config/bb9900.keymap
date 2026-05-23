@@ -1,9 +1,50 @@
 /*
- * Copyright (c) 2023 ZitaoTech
+ * bb9900.keymap — proposed for the operator's fork of Bill-lulu/uc9900
  *
- * SPDX-License-Identifier: MIT
+ * Targets the shipping ZitaoTech `bbkeyboard_tp` ZMK fork unchanged
+ * (no main.c patch, no driver rework). All changes are confined to
+ * this keymap file. Diff from stock V1.2.1:
+ *
+ *  1. Default top cluster — replaces F21..F24 with direct modifier
+ *     keycodes so DMS reads Y/X/B/A as Shift/Mod(Super)/Alt/Ctrl.
+ *     Trackpad-tap cell switched from MB1 (left click) to MB3
+ *     (middle click) per operator request.
+ *
+ *  2. Select cell — `&scroll_mod` (new macro below). Press taps
+ *     ScrollLock once (host LED indicator -> bit 2 -> firmware
+ *     `app/src/main.c` line 75 condition `== 4` matches -> scroll
+ *     mode engages). Release taps ScrollLock again, indicator
+ *     clears, firmware returns to cursor mode. No OS-visible typing
+ *     effect (ScrollLock is unused on modern Wayland desktops).
+ *     Mechanism documented at:
+ *       https://zmk.dev/docs/keymaps/behaviors/macros
+ *     Firmware trigger lives in ZitaoTech/zmk@bbkeyboard_tp
+ *       app/src/main.c lines 72-95 (per-profile scroll-mode check
+ *       on `zmk_hid_indicators_get_current_profile()`).
+ *
+ *  3. Sym layer top special row — Fn+Esc -> C_AL_LOCK (DMS lock),
+ *     Fn+Select -> PSCRN, Fn+Start -> PAUSE_BREAK. Sym-layer
+ *     fixes match what was promised earlier.
+ *
+ *  4. Combo: LAlt + RAlt + Start (matrix indices 69, 71, 13)
+ *     fires `&bootloader` to drop into UF2 bootloader for flashing.
+ *     Index numbers derived from V1.2.1 default_transform binding
+ *     row order (row3 cell3 = Start = idx 13; row8 cells 3 and 5 =
+ *     LAlt and RAlt = idx 69 and 71). Verify post-flash; if the
+ *     combo doesn't fire, the worst case is no DFU shortcut --
+ *     `&bootloader` is also still on the UPPER layer (stock).
+ *
+ *  5. Face buttons Y/X/B/A on matrix r0 cols 7/8/9/10:
+ *       (0,7) Y = LSHFT   (0,8) X = LGUI
+ *       (0,9) B = LALT    (0,10) A = LCTRL
+ *     Operator verified earlier: YXBA = Mod/Shift/Alt/Ctrl,
+ *     specifically with X=Mod(Super=LGUI), Y=Shift.
+ *
+ *  6. The Gamepad layer (joystick HID) from j1n6 QMK is NOT ported.
+ *     ZMK has no joystick HID class. If emulator use needs joystick
+ *     axes, that's a separate userspace uinput shim.
  */
-   
+
 #include <behaviors.dtsi>
 #include <dt-bindings/zmk/keys.h>
 #include <dt-bindings/zmk/bt.h>
@@ -12,11 +53,9 @@
 #include <dt-bindings/zmk/backlight.h>
 #include <dt-bindings/zmk/ext_power.h>
 
-#define SYM 1
-#define UPPER 2
-
- 
-
+#define DEFAULT 0
+#define SYM     1
+#define UPPER   2
 
 / {
     behaviors {
@@ -26,13 +65,40 @@
             tapping-term-ms = <400>;
             bindings = <&mkp LCLK>, <&bt BT_CLR>;
         };
-    };
-    behaviors {
+
         hm: homerow_mods {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
             tapping-term-ms = <500>;
             bindings = <&out &kp>;
+        };
+
+        // Select-held = trackpad scroll. ScrollLock tap on press
+        // toggles host indicator bit 2 -> firmware enters scroll
+        // mode. Tap again on release -> indicator clears -> cursor
+        // mode resumes. ScrollLock has no typing side effect on
+        // modern Wayland desktops.
+        scroll_mod: scroll_mod {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            bindings
+                = <&macro_tap &kp SLCK>
+                , <&macro_pause_for_release>
+                , <&macro_tap &kp SLCK>
+                ;
+        };
+    };
+
+    combos {
+        compatible = "zmk,combos";
+        // DFU/bootloader: LAlt + RAlt + Start (Start = matrix
+        // row 1 cell 2 in stock keymap order, which is binding
+        // index 13; LAlt/RAlt are in the thumb row at index
+        // 69 and 71).
+        combo_dfu {
+            timeout-ms = <50>;
+            key-positions = <13 69 71>;
+            bindings = <&bootloader>;
         };
     };
 
@@ -40,60 +106,82 @@
         compatible = "zmk,keymap";
 
         default_layer {
-
             bindings = <
-//---------------------------------------------------------------------------------------------------------
-// |  ←  | ↑   | ↓   | →   |  Mleft  |  Mright |  Trackpad    |  Y  |  B  |  X  |  A  |                                       
-// |  ESC   |  SELECT  | Start |                 voive  |   [  |  ]  |   /  |  -  |  =  |  \  |
-// |   ~   |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  0  |  Backspace  |
-// |   TAB   |  Q  |  W  |  E  |  R  |  T  |  Y  |  U  |  I  |  O  |  P  | 
-// |    '      |  A  |  S  |  D  |  F  |  G  |  H  |  J  |  K  |  L  |  ;  |     ENTER   |  
-// |  LShift  |  Z  |  X  |  C  |  V  |  B  |  N  |  M  |  <  |  >  |  ;  |  RShift  |  
-//        |  Fn  |  LCtrl  |  Alt   |      SPACE      |   Alt   |  RCtrl   |  Fn   |  
-//        -----------------------------------------------------------------------------------------------------------------
-            &kp LEFT                      &mkp LCLK         &mkp LCLK      &kp F21   &kp F22 
-&kp UP   &kp DOWN &kp RIGHT               &mkp RCLK                       &kp  F23      &kp F24
-&kp ESC    &kp K_SELECT  &kp C_PLAY &kp K_MUTE    &kp LBKT   &kp RBKT   &kp FSLH   &kp MINUS  &kp  EQUAL &kp BACKSLASH                                                                                  
-&kp GRAVE  &kp N1        &kp N2     &kp N3   &kp N4     &kp N5     &kp N6     &kp N7     &kp N8    &kp N9  &kp N0 &kp BSPC
-&kp TAB     &kp Q         &kp W      &kp E    &kp R      &kp T      &kp Y      &kp U      &kp I     &kp O   &kp P
-&kp SQT     &kp A         &kp S      &kp D    &kp F      &kp G      &kp H      &kp J      &kp K     &kp L   &kp SEMICOLON &kp ENTER        
-&kp LSHFT   &kp Z         &kp X      &kp C    &kp V      &kp B      &kp N      &kp M      &kp COMMA &kp DOT &kp RSHFT
-  &mo SYM   &kp LCTRL               &kp LALT              &kp SPACE           &kp RALT         &kp RCTRL     &mo UPPER        
+//-----------------------------------------------------------------------------------------------------------------------
+// Row0 top cluster: arrows + L/R mouse btn + Trackpad-tap + Y/X/B/A face mods.
+// Stock V1.2.1 binding-row order is: row 1 = RC(0,0,4,6,7,9); row 2 = RC(0,1,2,3,5,8,10).
+//
+//          ←(0,0)   L_mouse(0,4)   Trackpad(0,6)   Y(0,7)         B(0,9)
+//          ↑(0,1)   ↓(0,2)         →(0,3)          R_mouse(0,5)   X(0,8)   A(0,10)
+//
+&kp LEFT      &mkp MB1      &mkp MB3      &kp LSHFT     &kp LALT
+&kp UP        &kp DOWN      &kp RIGHT     &mkp MB2      &kp LGUI      &kp LCTRL
+
+// Row1 top special row (10 cells): Esc Sel Sta Vol [ ] / - = \
+&kp ESC       &scroll_mod   &kp C_PLAY    &kp C_VOL_DN  &kp LBKT      &kp RBKT      &kp FSLH      &kp MINUS     &kp EQUAL     &kp BSLH
+
+// Row2 number row (12 cells): ` 1 2 3 4 5 6 7 8 9 0 Bsp
+&kp GRAVE     &kp N1        &kp N2        &kp N3        &kp N4        &kp N5        &kp N6        &kp N7        &kp N8        &kp N9        &kp N0        &kp BSPC
+
+// Row3 QWERTY top (11 cells): Tab Q W E R T Y U I O P
+&kp TAB       &kp Q         &kp W         &kp E         &kp R         &kp T         &kp Y         &kp U         &kp I         &kp O         &kp P
+
+// Row4 home row (12 cells): ' A S D F G H J K L ; Enter
+&kp SQT       &kp A         &kp S         &kp D         &kp F         &kp G         &kp H         &kp J         &kp K         &kp L         &kp SEMI      &kp ENTER
+
+// Row5 bottom letters (11 cells): LSft Z X C V B N M , . RSft
+&kp LSHFT     &kp Z         &kp X         &kp C         &kp V         &kp B         &kp N         &kp M         &kp COMMA     &kp DOT       &kp RSHFT
+
+// Row6 thumb row (7 cells): Fn LCtl LAlt Space RAlt RCtl Fn
+&mo SYM       &kp LCTRL     &kp LALT      &kp SPACE     &kp RALT      &kp RCTRL     &mo UPPER
             >;
         };
-
 
         sym_layer {
-
             bindings = <
-        &kp LEFT                      &mkp LCLK         &mkp RCLK      &kp Y   &kp X 
-&kp K_VOL_UP   &kp K_VOL_DN &kp RIGHT               &mkp RCLK                       &kp  B      &kp A
-&kp C_AL_SCREENSAVER  &kp C_AC_PRINT &mkp C_PAUSE  &kp K_VOL_UP &none   &none   &none   &kp F11    &kp F12   &bootloader                                                                                   
-&none    &kp F1         &kp F2        &kp F3     &kp F4     &kp F5     &kp F6     &kp F7     &kp F8    &kp F9  &kp F10 &kp DEL
-&kp CAPSLOCK    &kp Q          &kp W         &kp E      &kp R      &kp T      &kp Y      &kp PAGE_UP      &kp INSERT     &kp O   &kp P
-&none    &kp A          &kp S         &kp D      &kp F      &kp G      &kp HOME      &kp END      &kp PAGE_DOWN     &kp L   &none &none         
-&none    &kp Z          &kp X         &kp C      &kp V      &kp B      &kp N      &kp M      &kp C_BRI_DN &kp C_BRI_UP &kp RSHFT
-  &none  &kp LCTRL               &kp LGUI             &bl BL_TOG           &mo SYM         &mo SYM     &mo UPPER           
+// Top cluster — D-pad becomes Home/PgUp/PgDn/End on hold-Fn (j1n6 LY1 semantics)
+&kp HOME      &trans        &trans        &trans        &trans
+&kp PG_UP     &kp PG_DN     &kp END       &trans        &trans        &trans
 
+// Top special row: Fn+Esc=lock, Fn+Sel=PSCRN, Fn+Sta=Pause, Fn+Vol=mute,
+//                  [ ]=trans, / -=brightness, = \ = F11 F12
+&kp C_AL_LOCK &kp PSCRN     &kp PAUSE_BREAK &kp C_MUTE  &trans        &trans        &kp C_BRI_DN  &kp C_BRI_UP  &kp F11       &kp F12
+
+// Number row -> F1..F10 + Del
+&trans        &kp F1        &kp F2        &kp F3        &kp F4        &kp F5        &kp F6        &kp F7        &kp F8        &kp F9        &kp F10       &kp DEL
+
+// Tab + QWERTY -> Caps + trans
+&kp CAPS      &trans        &trans        &trans        &trans        &trans        &trans        &trans        &trans        &trans        &trans
+
+// ' + ASDF -> Home/End markers on outer edges (matches j1n6 LY1)
+&kp HOME      &trans        &trans        &trans        &trans        &trans        &trans        &trans        &trans        &trans        &kp END       &trans
+
+// Z-row -> Insert on the position next-to-RSft (matches j1n6 LY1)
+&trans        &trans        &trans        &trans        &trans        &trans        &trans        &trans        &trans        &kp INS       &trans
+
+// Thumb row -> Fn pass-through; LAlt becomes LGUI; Space becomes BL_INC for backlight step
+&trans        &trans        &kp LGUI      &bl BL_INC    &kp RGUI      &trans        &trans
             >;
         };
-
 
         upper_layer {
-
+            // BT controls + bootloader (preserved from V1.2.1 stock).
             bindings = <
-        &kp LEFT                      &mkp LCLK         &mkp RCLK      &kp Y   &kp X 
-&kp UP   &kp DOWN &kp RIGHT               &mkp RCLK                       &kp  B      &kp A
-&bt BT_CLR  &kp C_AC_PRINT &mkp C_PAUSE  &kp K_VOL_DN &none   &none   &none   &kp F11    &kp F12   &bootloader                                                                                   
-&none     &bt BT_SEL 0          &bt BT_SEL 1         &bt BT_SEL 2      &bt BT_SEL 3     &kp F5     &kp F6     &kp F7     &kp F8    &kp F9  &kp F10 &kp DEL
-&kp CAPSLOCK    &kp Q          &kp W         &kp E      &kp R      &kp T      &kp Y      &kp PAGE_UP      &kp INSERT     &kp O   &kp P
-&none    &kp A          &kp S         &kp D      &kp F      &kp G      &kp HOME      &kp END      &kp PAGE_DOWN     &kp L   &none &none         
-&none    &kp Z          &kp X         &kp C      &kp V      &kp B      &kp N      &kp M      &kp C_BRI_DN &kp C_BRI_UP &kp RSHFT
-  &sys_reset  &kp LCTRL               &kp LALT             &bl BL_TOG           &mo SYM         &none     &none           
+&kp LEFT      &mkp LCLK     &mkp RCLK     &kp Y         &kp X
+&kp UP        &kp DOWN      &kp RIGHT     &mkp RCLK     &kp B         &kp A
 
+&bt BT_CLR    &kp C_AC_PRINT &mkp C_PAUSE &kp K_VOL_DN  &trans        &trans        &trans        &kp F11       &kp F12       &bootloader
+
+&trans        &bt BT_SEL 0  &bt BT_SEL 1  &bt BT_SEL 2  &bt BT_SEL 3  &kp F5        &kp F6        &kp F7        &kp F8        &kp F9        &kp F10       &kp DEL
+
+&kp CAPS      &kp Q         &kp W         &kp E         &kp R         &kp T         &kp Y         &kp PG_UP     &kp INS       &kp O         &kp P
+
+&trans        &kp A         &kp S         &kp D         &kp F         &kp G         &kp HOME      &kp END       &kp PG_DN     &kp L         &trans        &trans
+
+&trans        &kp Z         &kp X         &kp C         &kp V         &kp B         &kp N         &kp M         &kp C_BRI_DN  &kp C_BRI_UP  &kp RSHFT
+
+&sys_reset    &kp LCTRL     &kp LALT      &bl BL_TOG    &mo SYM       &trans        &trans
             >;
         };
-
     };
 };
-
