@@ -31,7 +31,7 @@
     indi_capslock_indicator:  pwmledo {
         compatible = "pwm-leds";
         pwm_led_0 {
-            pwms = <&pwm2 0 PWM_USEC(20) PWM_POLARITY_NORMAL>;
+            pwms = <&pwm2 0 PWM_USEC(20) PWM_POLARITY_INVERTED>;
         };
     };
 
